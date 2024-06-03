@@ -1,10 +1,6 @@
-import math
-import os
 import numpy as np
-from collections import OrderedDict
 import ot
 import ot.plot
-import sys
 from tqdm import tqdm
 import get_tokens
 import get_chars
@@ -132,35 +128,25 @@ def write_vocab(tokens, pmatrix, chars, write_file_name, threshold=0.0001):
 
 def run_ot(oldtokens, chars, max_number=30000, interval=1000, numItermax=300):
     scores = {}
-    # max_number = 10000
 
     previous_entropy = 0
     chars = list(chars.items())
 
     for iter_number in range(interval, max_number, interval):  # iteration_numbers:
         tokens = list(oldtokens.items())[:iter_number]
-        # chars = list(chars.items)
 
         total_tokens = get_total_tokens(tokens)
         total_chars = get_total_tokens(chars)
-        # average_len = get_average_len(tokens)
-        l = [len(item[0]) + 1 for item in tokens]
         d_matrix = build_d_matrix(chars, tokens)
         a = get_r(chars, total_chars)
-        # print(min(a), min(b))
         b = get_r(tokens, total_tokens, False)
-        # print(min(a), min(b))
-        # print("finish building")
-        epsilon = 0.1  # entropy parameter
-        alpha = 1.0  # Unbalanced KL relaxation parameter
         current_entropy, _ = ot.sinkhorn(
             a, b, d_matrix, 1.0, method="sinkhorn", numItermax=numItermax, epsilon0=1e-6
         )
         if iter_number <= interval:
             previous_entropy = current_entropy
-            continue  # print("finish reading", iter_number, Gs, (Gs-previous_entropy)/2)
+            continue
         if iter_number > interval:
-            # print("finish running", iter_number, current_entropy, current_entropy-previous_entropy)
             scores[iter_number] = current_entropy - previous_entropy
         previous_entropy = current_entropy
     sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
@@ -172,28 +158,19 @@ def run_ot(oldtokens, chars, max_number=30000, interval=1000, numItermax=300):
 
 
 def run_ot_write(oldtokens, chars, optimal_size, numItermax=300):
-    previous_entropy = 0
-    scores = {}
     tokens = list(oldtokens.items())[:optimal_size]
     total_tokens = get_total_tokens(tokens)
     total_chars = get_total_tokens(chars.items())
-    # average_len = get_average_len(tokens)
-    l = [len(item[0]) + 1 for item in tokens]
     d_matrix = build_d_matrix(list(chars.items()), tokens)
     a = get_r(chars.items(), total_chars)
     b = get_r(tokens, total_tokens, False)
-    # print("finish building")
-    epsilon = 0.1  # entropy parameter
-    alpha = 1.0  # Unbalanced KL relaxation parameter
     _, Gs = ot.sinkhorn(
         a, b, d_matrix, 1.0, method="sinkhorn", numItermax=numItermax, epsilon0=1e-6
     )
-    previous_entropy = Gs
     return Gs
 
 
-if __name__ == "__main__":
-
+def main():
     parser = argparse.ArgumentParser(description="Process some input flags.")
     parser.add_argument(
         "--source_file", default=None, help="path to a source file for translation"
@@ -245,30 +222,27 @@ if __name__ == "__main__":
     args = parser.parse_args()
     source_file = args.source_file
     target_file = args.target_file
-    token_candidate_file = args.token_candidate_file
-    vocab_file = args.vocab_file
-    max_number = args.max_number
-    interval = args.interval
     num_iter_max = args.loop_in_ot
-    threshold = args.threshold
-    tokenizer = args.tokenizer
-    size_file = args.size_file
 
     oldtokens = get_tokens.get_tokens(
-        source_file, target_file, token_candidate_file, tokenizer=args.tokenizer
+        source_file, target_file, args.token_candidate_file, tokenizer=args.tokenizer
     )  # get token candidates and their frequencies
     chars = get_chars.get_chars(
         source_file, target_file, tokenizer=args.tokenizer
     )  # get chars and their frequencies
     optimal_size = run_ot(
-        oldtokens, chars, max_number, interval, num_iter_max
+        oldtokens, chars, args.max_number, args.interval, num_iter_max
     )  # generate the best ot size
     Gs = run_ot_write(
         oldtokens, chars, optimal_size, num_iter_max
     )  # generate the optimal matrix based on the ot size
     write_vocab(
-        oldtokens, Gs, chars, vocab_file, threshold
+        oldtokens, Gs, chars, args.vocab_file, args.threshold
     )  # generate the vocabulary based on the optimal matrix
-    with open(size_file, "w") as sw:
+    with open(args.size_file, "w") as sw:
         sw.write(str(optimal_size) + "\n")
     # return optimal_size
+
+
+if __name__ == "__main__":
+    main()
